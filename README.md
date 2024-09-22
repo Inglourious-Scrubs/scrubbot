@@ -1,2 +1,2 @@
 # scrubbot
-A Discord bot made for the Inglourious Scrubs [DPS] guild server
+A Discord bot made for the Inglourious Scrubs [DPS] guild server. I have rights
