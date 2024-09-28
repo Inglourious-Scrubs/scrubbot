@@ -12,10 +12,9 @@ from discord.ui import Button, View
 import requests
 
 # Personal files
-from config import (ROLE_ID_CONFIRMATION, ROLE_ID_GUEST, ROLE_ID_MEMBER, ROLE_ID_STAFF,
+from config import (ROLE_ID_CONFIRMATION, ROLE_ID_GUEST, ROLE_ID_MEMBER, ROLE_ID_STAFF, ROLE_ID_BIRTHDAY,
                     ROLE_ID_FAMED_MEMBER, GUILD_ID, API_KEY, CHANNEL_ID_MENTORS, CHANNEL_ID_RULES,
                     CURRENT_DB_FILENAME)
-from db import update_database, daily_update, init_db, start_daily_update, check_and_update_db
 
 
 # -------------- Classes for modals and buttons --------------
@@ -32,17 +31,16 @@ class GW2IDModal(ui.Modal, title='Verify your GW2 ID'):
         await self.cog.process_verification(interaction, self.gw2_id.value)
 
 
-class GW2IDUpdateModal(ui.Modal, title='Update your GW2 ID'):
-    """Modal for updating the GW2 ID."""
-    gw2_id = ui.TextInput(label='Enter your GW2 ID (e.g., Example.1234)', style=discord.TextStyle.short)
-
-    def __init__(self, cog):
+class GW2IDUpdateModal(discord.ui.Modal, title='Update your GW2 ID'):
+    def __init__(self, bot):
         super().__init__()
-        self.cog = cog
+        self.bot = bot
+        self.gw2_id = discord.ui.TextInput(label='Enter your GW2 ID (e.g., Example.1234)', style=discord.TextStyle.short)
+        self.add_item(self.gw2_id)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        await self.cog.process_update(interaction, self.gw2_id.value)
+        await process_update(self.bot, interaction, self.gw2_id.value)
 
 
 class AdminGW2IDUpdateModal(discord.ui.Modal, title="Update GW2 ID"):
@@ -167,10 +165,12 @@ class AdminGW2IDUpdateModal(discord.ui.Modal, title="Update GW2 ID"):
 
 
 class GuildInviteRequestModal(discord.ui.Modal):
-    def __init__(self, for_member: bool, *args, **kwargs):
+    def __init__(self, invite_for: str, *args, **kwargs):
         super().__init__(title="Request Guild Invitation", *args, **kwargs)
 
-        # Common field for all users
+        self.invite_for = invite_for
+
+        # GW2 ID input field
         self.gw2_id = discord.ui.TextInput(
             label="Guild Wars 2 ID",
             placeholder="Enter your GW2 ID (e.g., Player.1234)",
@@ -179,42 +179,23 @@ class GuildInviteRequestModal(discord.ui.Modal):
         )
         self.add_item(self.gw2_id)
 
-        # Conditionally add the invite_for field only if the user has the member role
-        if for_member:
-            self.invite_for = discord.ui.TextInput(
-                label="Is this invite for you or a friend?",
-                placeholder="Enter 'me' or 'friend'",
-                required=True,
-                max_length=6
-            )
-            self.add_item(self.invite_for)
-
     async def on_submit(self, interaction: discord.Interaction):
         gw2_id = self.gw2_id.value
-        invite_for = getattr(self, 'invite_for', None)
-        invite_for_value = invite_for.value if invite_for else "me"
-
-        # Validate invite_for_value
-        if invite_for_value not in ["me", "friend"]:
-            await interaction.response.send_message(
-                "Invalid input. Please use 'me' or 'friend' for the invite type.",
-                ephemeral=True
-            )
-            return
 
         # Get the channel where mentors should be notified
         channel = interaction.guild.get_channel(CHANNEL_ID_MENTORS)
 
         # Prepare the message based on the selection
-        if invite_for_value == "me":
+        if self.invite_for == "me":
             message = (
                 f"🚨 __**Attention Needed**__ 🚨\n\n"
                 f"{interaction.user.mention} is requesting an invite to the guild.\n\n"
                 f"**GW2 ID**: ```{gw2_id}```")
         else:
-            message = (f"🚨 __**Attention Needed**__ 🚨\n\n"
-                       f"{interaction.user.mention} is requesting an invite to the guild for a **friend**.\n\n"
-                       f"**GW2 ID**: ```{gw2_id}```")
+            message = (
+                f"🚨 __**Attention Needed**__ 🚨\n\n"
+                f"{interaction.user.mention} is requesting an invite to the guild for a **friend**.\n\n"
+                f"**GW2 ID**: ```{gw2_id}```")
 
         # Send the notification to the mentor channel
         if channel:
@@ -337,8 +318,8 @@ class ApplicationModalPart2(discord.ui.Modal):
             conn = sqlite3.connect(CURRENT_DB_FILENAME)
             c = conn.cursor()
             c.execute('''
-                INSERT INTO mentor_applications
-                (discord_id, gw2_id, joined_how, timezone, has_commander_tag,
+                INSERT INTO mentor_applications 
+                (discord_id, gw2_id, joined_how, timezone, has_commander_tag, 
                 content_preference, has_led_event, event_interest, changes_suggested)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
@@ -406,8 +387,8 @@ class AddToWatchlistModal(ui.Modal, title='Add Player to Watchlist'):
             c = conn.cursor()
 
             c.execute('''
-                UPDATE users
-                SET watchlist_reason = ?
+                UPDATE users 
+                SET watchlist_reason = ? 
                 WHERE discord_id = ?
             ''', (self.reason.value, self.discord_id))
 
@@ -436,7 +417,7 @@ class WarningsButton(ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         try:
-            await self.cog.display_warnings(interaction, self.user_id, self.warnings)
+            await display_warnings(interaction, self.user_id, self.warnings)
         except Exception as e:
             print(f"Error in WarningsButton callback: {e}")
             await interaction.response.send_message(
@@ -502,7 +483,7 @@ class ApplicationView(View):
 
         # Set thumbnail
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        thumbnail_path = os.path.join(script_dir, "Application_details.png")
+        thumbnail_path = os.path.join(script_dir, "pictures", "Application_details.png")
 
         if os.path.exists(thumbnail_path):
             file = discord.File(thumbnail_path, filename="Application_details.png")
@@ -640,6 +621,178 @@ class BirthdayModal(ui.Modal, title="Set Your Birthday"):
                                                 ephemeral=True)
 
 
+# -------------- Functions ----------------
+async def display_warnings(interaction: discord.Interaction, user_id: str, warnings):
+    """Display warnings for a user."""
+    user = await interaction.client.fetch_user(int(user_id))
+    embed = discord.Embed(title="__**Warnings**__", color=discord.Color.yellow())
+
+    # Set author (this will display the avatar, nickname, and mention)
+    embed.set_author(name=f"{user.display_name}", icon_url=user.display_avatar.url)
+    embed.description = f"{user.mention}"
+
+    def format_date(date_string):
+        try:
+            date_obj = datetime.fromisoformat(date_string)
+            return date_obj.strftime("%B %d %Y at %I:%M %p")  # e.g., "July 14 2024 at 11:47 PM"
+        except ValueError:
+            return "Unknown Date"
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    thumbnail_path = os.path.join(script_dir, "pictures", "Warnings.png")
+
+    if os.path.exists(thumbnail_path):
+        file = discord.File(thumbnail_path, filename="Warnings.png")
+        embed.set_thumbnail(url="attachment://Warnings.png")
+    else:
+        file = None
+        print(f"Thumbnail file not found at: {thumbnail_path}")
+
+    def get_ordinal_suffix(n):
+        if 11 <= n % 100 <= 13:
+            return 'th'
+        else:
+            return {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+
+    for i, warning in enumerate(sorted(warnings, key=lambda x: x[3]), 1):
+        embed.add_field(
+            name=f"{i}{get_ordinal_suffix(i)} Warning",
+            value=f"__Reason:__ {warning[2]}\n__Date:__ {format_date(warning[3])}",
+            inline=False
+        )
+
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(file=file, embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message(file=file, embed=embed, ephemeral=True)
+    except discord.errors.NotFound:
+        # If the interaction has expired, send a new message in the channel
+        await interaction.channel.send(f"{interaction.user.mention}, here are the warnings:", file=file,
+                                       embed=embed)
+    except Exception as e:
+        print(f"Error displaying warnings: {e}")
+
+
+async def process_update(bot, interaction: discord.Interaction, new_gw2_id: str):
+    # Fetch the guild roster from the GW2 API
+    response = requests.get(f"https://api.guildwars2.com/v2/guild/{GUILD_ID}/members",
+                            headers={"Authorization": f"Bearer {API_KEY}"})
+    if response.status_code != 200:
+        await interaction.followup.send("Failed to fetch guild roster. Please try again later.")
+        return
+    guild_roster = response.json()
+
+    # Check if the provided GW2 ID matches any member in the guild roster
+    matching_member = next((m for m in guild_roster if m['name'].lower() == new_gw2_id.lower()), None)
+
+    if matching_member:
+        # Connect to the database
+        conn = sqlite3.connect(CURRENT_DB_FILENAME)
+        cursor = conn.cursor()
+
+        try:
+            # Fetch current user data
+            cursor.execute("SELECT gw2_id, alt_gw2_id FROM users WHERE discord_id = ?", (str(interaction.user.id),))
+            current_data = cursor.fetchone()
+            current_main_id, current_alt_id = current_data if current_data else (None, None)
+
+            swapped = False
+            # Check if we're swapping main and alt
+            if new_gw2_id == current_alt_id:
+                new_main_id, new_alt_id = current_alt_id, current_main_id
+                swapped = True
+            else:
+                new_main_id, new_alt_id = new_gw2_id, current_alt_id
+
+            # Check for conflicts with existing accounts
+            cursor.execute("SELECT discord_id FROM users WHERE gw2_id = ? OR alt_gw2_id = ?",
+                           (new_main_id, new_main_id))
+            existing_user = cursor.fetchone()
+            if existing_user and str(existing_user[0]) != str(interaction.user.id):
+                await interaction.followup.send(
+                    f"This Guild Wars 2 ID ({new_main_id}) is already associated with another Discord account. Contact staff if you believe this is an error.",
+                    ephemeral=True)
+                mentors_channel = self.bot.get_channel(CHANNEL_ID_MENTORS)
+                if mentors_channel:
+                    await mentors_channel.send(
+                        f"🚨 __**Suspicious Activity**__ 🚨\n\n"
+                        f"User {interaction.user.mention} attempted to verify with GW2 ID:\n\n"
+                        f"*{new_main_id}*\n\n"
+                        f"This ID is already associated with <@{existing_user[0]}>.")
+                return
+
+            # Update the user's GW2 ID in the database
+            cursor.execute("UPDATE users SET gw2_id = ?, alt_gw2_id = ?, guild_status = ? WHERE discord_id = ?",
+                           (new_main_id, new_alt_id, "Member", str(interaction.user.id)))
+            conn.commit()
+
+            if swapped:
+                await interaction.followup.send(
+                    f"Your main and alt Guild Wars 2 IDs have been swapped. Main ID is now {new_main_id}.",
+                    ephemeral=True)
+            else:
+                await interaction.followup.send(f"Your Guild Wars 2 ID has been updated to {new_main_id}.",
+                                                ephemeral=True)
+
+            # Notify mentors
+            mentors_channel = bot.get_channel(CHANNEL_ID_MENTORS)
+            if mentors_channel:
+                if swapped:
+                    await mentors_channel.send(
+                        f"{interaction.user.mention} has swapped their main and alt GW2 IDs. Main ID is now {new_main_id}.")
+                else:
+                    await mentors_channel.send(
+                        f"{interaction.user.mention} has updated their GW2 ID to {new_main_id}.")
+
+        finally:
+            conn.close()
+    else:
+        # Explain possible reasons for not finding a match
+        await interaction.followup.send(
+            f"The GW2 ID {new_gw2_id} was not found in the guild roster. This might be because:\n"
+            f"- There is a typo in the ID provided\n"
+            f"- You are not currently a member of the guild\n"
+            f"- The API key has not updated yet. Please wait about 10 minutes and try verifying again.",
+            ephemeral=True)
+
+        # Ask if the user needs an invitation
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(label="Yes", style=discord.ButtonStyle.green, custom_id="yes"))
+        view.add_item(discord.ui.Button(label="No", style=discord.ButtonStyle.red, custom_id="no"))
+
+        await interaction.followup.send("Do you need an invitation to the guild?", view=view, ephemeral=True)
+
+        try:
+            interaction_response = await self.bot.wait_for(
+                "interaction",
+                check=lambda i: i.user.id == interaction.user.id and i.data["custom_id"] in ["yes", "no"],
+                timeout=180.0
+            )
+
+            if interaction_response.data["custom_id"] == "yes":
+                await interaction_response.response.send_message(
+                    "[DPS] staff has been notified to invite you back to the guild.\n\n"
+                    "Please run this command again once you've joined the guild.", ephemeral=True)
+
+                # Notify mentors
+                mentors_channel = self.bot.get_channel(CHANNEL_ID_MENTORS)
+                if mentors_channel:
+                    view = discord.ui.View().add_item(InvitationButton(new_gw2_id))
+                    await mentors_channel.send(
+                        f"🚨 __**Attention Needed**__ 🚨\n\n"
+                        f"{interaction.user.mention} needs to be invited to the guild with GW2 ID: {new_gw2_id}\n"
+                        f"Please invite them back to the guild.", view=view)
+            else:
+                await interaction_response.response.send_message(
+                    "Alright, the process has been interrupted. No changes have been made to your GW2 ID.",
+                    ephemeral=True)
+
+        except asyncio.TimeoutError:
+            await interaction.followup.send("You didn't respond in time. No changes have been made to your GW2 ID.",
+                                            ephemeral=True)
+
+
 # -------------- Cogs ----------------
 class ConfirmationCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -773,18 +926,41 @@ class ConfirmationCog(commands.Cog):
     @app_commands.command(name="guild-invite", description="Request an invitation to the guild")
     @app_commands.checks.has_any_role(ROLE_ID_MEMBER, ROLE_ID_CONFIRMATION)
     async def guild_invite(self, interaction: discord.Interaction):
-        # Determine if the user has the member role
+        # Check if the user has the member role
         for_member = discord.utils.get(interaction.user.roles, id=ROLE_ID_MEMBER) is not None
 
-        # Show the modal for the GW2 ID input and invite type
-        await interaction.response.send_modal(GuildInviteRequestModal(for_member))
+        # If user is a member, ask if the invite is for them or a friend
+        if for_member:
+            # Create the view with two buttons for "Me" and "Friend"
+            view = View()
+            view.add_item(Button(label="Me", style=discord.ButtonStyle.primary, custom_id="invite_me"))
+            view.add_item(Button(label="Friend", style=discord.ButtonStyle.primary, custom_id="invite_friend"))
+
+            # Send the response with the buttons
+            await interaction.response.send_message("Is this invite for you or a friend?", view=view, ephemeral=True)
+
+            # Handle button interaction
+            def check(button_interaction: discord.Interaction):
+                return button_interaction.data["custom_id"] in ["invite_me", "invite_friend"]
+
+            button_interaction = await interaction.client.wait_for("interaction", check=check)
+
+            if button_interaction.data["custom_id"] == "invite_me":
+                await button_interaction.response.send_modal(GuildInviteRequestModal("me"))
+            else:
+                await button_interaction.response.send_modal(GuildInviteRequestModal("friend"))
+
+        else:
+            # If the user is in the confirmation role, directly ask for the GW2 ID
+            await interaction.response.send_modal(GuildInviteRequestModal("me"))
 
     @guild_invite.error
     async def guild_invite_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingAnyRole):
             await interaction.response.send_message(
                 "Sorry, you don't have the necessary permissions to use this command.",
-                ephemeral=True)
+                ephemeral=True
+            )
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
 
@@ -793,22 +969,44 @@ class MemberCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="set-birthday", description="Set your birthday")
+    @app_commands.command(name="birthday", description="Set or remove your birthday")
     @app_commands.checks.has_role(ROLE_ID_MEMBER)
-    async def set_birthday(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(BirthdayModal(self))
+    @app_commands.choices(action=[app_commands.Choice(name="Set your birthday", value="set"),
+                                  app_commands.Choice(name="Remove your birthday", value="remove")])
+    async def birthday(self, interaction: discord.Interaction, action: str):
 
-    @set_birthday.error
-    async def set_birthday_error(self, interaction: discord.Interaction, error):
+        if action == "set":
+            await interaction.response.send_modal(BirthdayModal(self))
+        elif action == "remove":
+            conn = sqlite3.connect(CURRENT_DB_FILENAME)
+            c = conn.cursor()
+
+            try:
+                c.execute("UPDATE users SET birthday = '-' WHERE discord_id = ?", (str(interaction.user.id),))
+                conn.commit()
+
+                # Remove birthday role if present
+                birthday_role = interaction.guild.get_role(ROLE_ID_BIRTHDAY)
+                if birthday_role and birthday_role in interaction.user.roles:
+                    await interaction.user.remove_roles(birthday_role)
+
+                await interaction.response.send_message("Your birthday has been removed.", ephemeral=True)
+            except sqlite3.Error as e:
+                await interaction.response.send_message(f"An error occurred while removing your birthday: {e}",
+                                                        ephemeral=True)
+            finally:
+                conn.close()
+
+    @birthday.error
+    async def birthday_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
-            await interaction.response.send_message("You must be a member to apply for a staff position.",
-                                                    ephemeral=True)
+            await interaction.response.send_message("You must be a member to use this command.", ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
 
-    @app_commands.command(name="apply-staff", description="Apply for a staff position in [DPS]")
+    @app_commands.command(name="apply-mentor", description="Apply for a staff position in [DPS]")
     @app_commands.checks.has_role(ROLE_ID_MEMBER)
-    async def apply_staff(self, interaction: discord.Interaction):
+    async def apply_mentor(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="<:DPS:858334399950487562> [DPS] Staff Member Application <:DPS:858334399950487562>",
             description="""
@@ -841,16 +1039,16 @@ class MemberCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @apply_staff.error
-    async def apply_staff_error(self, interaction: discord.Interaction, error):
+    @apply_mentor.error
+    async def apply_mentor_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message("You must be a member to apply for a staff position.",
                                                     ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
 
-    @app_commands.command(name="whois", description="Get minimal user information")
-    @app_commands.describe(identifier="The user's @mention or GW2 ID")
+    @app_commands.command(name="whois", description="Get user information")
+    @app_commands.describe(identifier="The user's @mention, Discord ID, or GW2 ID")
     @app_commands.checks.has_role(ROLE_ID_MEMBER)
     async def whois(self, interaction: discord.Interaction, identifier: str):
         await interaction.response.defer(ephemeral=True)
@@ -860,121 +1058,120 @@ class MemberCog(commands.Cog):
             conn = sqlite3.connect(CURRENT_DB_FILENAME)
             c = conn.cursor()
 
-            # Try to find the user by Discord ID/mention
-            if identifier.startswith('<@') and identifier.endswith('>'):
-                discord_id = identifier[2:-1]
-                if discord_id.startswith('!'):
-                    discord_id = discord_id[1:]
-            else:
-                discord_id = identifier
+            # Find user in database
+            discord_id = identifier[2:-1] if identifier.startswith('<@') and identifier.endswith('>') else identifier
+            discord_id = discord_id[1:] if discord_id.startswith('!') else discord_id
 
-            # Try to find the user by Discord ID first
-            c.execute("SELECT * FROM users WHERE discord_id = ?", (discord_id,))
-            user_data = c.fetchone()
-
-            # If not found by Discord ID, try to find by GW2 ID
-            if not user_data:
-                c.execute("SELECT * FROM users WHERE gw2_id = ?", (identifier,))
+            for query in [
+                "SELECT * FROM users WHERE discord_id = ?",
+                "SELECT * FROM users WHERE gw2_id = ?",
+                "SELECT * FROM users WHERE alt_gw2_id = ?"
+            ]:
+                c.execute(query, (discord_id,))
                 user_data = c.fetchone()
+                if user_data:
+                    break
 
-            # If still not found, try to find by alt GW2 ID
-            if not user_data:
-                c.execute("SELECT * FROM users WHERE alt_gw2_id = ?", (identifier,))
-                user_data = c.fetchone()
-
-            # Handle the case if user_data is found or not
             if not user_data:
                 await interaction.followup.send("User not found in the database.", ephemeral=True)
                 return
 
-            if user_data:
-                # Get column names
-                column_names = [description[0] for description in c.description]
+            column_names = [description[0] for description in c.description]
+            discord_user = await self.bot.fetch_user(int(user_data[column_names.index('discord_id')]))
+            discord_member = interaction.guild.get_member(discord_user.id)
 
-                # Fetch Discord user and member objects
-                discord_user = await self.bot.fetch_user(int(user_data[column_names.index('discord_id')]))
-                discord_member = interaction.guild.get_member(discord_user.id)
+            embed = discord.Embed(color=discord_member.color if discord_member else discord.Color.blue())
+            embed.set_author(name=f"{discord_member.display_name if discord_member else discord_user.name}",
+                             icon_url=discord_user.display_avatar.url)
+            embed.set_thumbnail(url=discord_user.display_avatar.url)
+            embed.description = f"{discord_user.mention}"
 
-                # Get the user's color
-                user_color = discord_member.color if discord_member else discord.Color.blue()
+            # Common fields
+            gw2_id, guild_status = user_data[column_names.index('gw2_id')], user_data[
+                column_names.index('guild_status')]
+            alt_gw2_id, alt_guild_status = user_data[column_names.index('alt_gw2_id')], user_data[
+                column_names.index('alt_guild_status')]
 
-                # Create embed
-                embed = discord.Embed(color=user_color)
-
-                # Set author (this will display the avatar, nickname, and mention)
-                embed.set_author(name=f"{discord_member.display_name if discord_member else discord_user.name}",
-                                 icon_url=discord_user.display_avatar.url)
-
-                # Set thumbnail
-                embed.set_thumbnail(url=discord_user.display_avatar.url)
-
-                # Add Discord mention
-                embed.description = f"{discord_user.mention}"
-
-                # Add GW2 ID and Guild Status (Alt-account included)
-                gw2_id = user_data[column_names.index('gw2_id')]
-                guild_status = user_data[column_names.index('guild_status')]
-                alt_gw2_id = user_data[column_names.index('alt_gw2_id')]
-                alt_guild_status = user_data[column_names.index('alt_guild_status')]
-                embed.add_field(name="🔑 Guild Wars 2 ID", value=gw2_id, inline=True)
-                embed.add_field(name="🏅 Guild Status", value=guild_status, inline=True)
-                embed.add_field(name="\u200b", value="", inline=False)
-                embed.add_field(name="🔑 Guild Wars 2 ID (alt)", value=alt_gw2_id, inline=True)
-                embed.add_field(name="🏅 Guild Status (alt)", value=alt_guild_status, inline=True)
-                embed.add_field(name="\u200b", value="", inline=False)
-
-                # Fetch the guild roster from the GW2 API
-                response = requests.get(f"https://api.guildwars2.com/v2/guild/{GUILD_ID}/members",
-                                        headers={"Authorization": f"Bearer {API_KEY}"})
-                if response.status_code != 200:
-                    await interaction.followup.send("Failed to fetch the guild roster. Please try again later.",
-                                                    ephemeral=True)
-                    return
-                guild_roster = response.json()
-
-                # Search for the user in the guild roster using the GW2 ID
-                gw2_join_date = None
-                for member in guild_roster:
-                    if member["name"].lower() == gw2_id.lower():
-                        gw2_join_date = member.get('joined')
-                        break
-
-                # If not found, set the join date to "-"
-                if not gw2_join_date:
-                    joined_gw2_date = "-"
-                else:
-                    # Convert the GW2 join date to a human-readable format
-                    joined_gw2_date = datetime.strptime(gw2_join_date, "%Y-%m-%dT%H:%M:%S.%fZ").strftime("%b %d, %Y")
-
-                # Add GW2 join date to the embed
-                embed.add_field(name="📅 Guild joined", value=f"{joined_gw2_date}", inline=True)
-
-                # Add Discord registration date
-                registered_date = discord_user.created_at.strftime("%b %d, %Y")
-                embed.add_field(name="🕓 Discord joined", value=f"{registered_date}", inline=True)
-                embed.add_field(name="\u200b", value="", inline=False)
-
-                # Add Birthday date
-                embed.add_field(name="🎂 Birthday", value=user_data[column_names.index('birthday')], inline=True)
-                embed.add_field(name="\u200b", value="", inline=False)
-
-                # Add Roles
-                if discord_member:
-                    roles = [role.mention for role in discord_member.roles if role.name != "@everyone"]
-                    embed.add_field(name=f"🔖 Roles [{len(roles)}]", value=" ".join(roles) if roles else "No roles",
-                                    inline=False)
-
-                # Send the embed
-                await interaction.followup.send(embed=embed)
+            if any(role.id in [ROLE_ID_STAFF, ROLE_ID_FAMED_MEMBER] for role in interaction.user.roles):
+                embed.add_field(name="🆔 Guild Wars 2", value=f"{gw2_id}\n{alt_gw2_id}", inline=True)
+                embed.add_field(name="🎖️ Guild Status", value=f"{guild_status}\n{alt_guild_status}", inline=True)
             else:
-                await interaction.followup.send("User not found in the database.")
+                embed.add_field(name="🆔 Guild Wars 2", value=gw2_id, inline=True)
+                embed.add_field(name="🎖️ Guild Status", value=guild_status, inline=True)
+            embed.add_field(name="\u200b", value="", inline=False)
+
+            # Fetch guild roster and get join date
+            response = requests.get(f"https://api.guildwars2.com/v2/guild/{GUILD_ID}/members",
+                                    headers={"Authorization": f"Bearer {API_KEY}"})
+            if response.status_code != 200:
+                await interaction.followup.send("Failed to fetch the guild roster. Please try again later.",
+                                                ephemeral=True)
+                return
+
+            guild_roster = response.json()
+            gw2_join_date = next(
+                (member.get('joined') for member in guild_roster if member["name"].lower() == gw2_id.lower()), None)
+            joined_gw2_date = datetime.strptime(gw2_join_date, "%Y-%m-%dT%H:%M:%S.%fZ").strftime(
+                "%b %d, %Y") if gw2_join_date else "-"
+
+            embed.add_field(name="📅 Guild joined", value=joined_gw2_date, inline=True)
+            embed.add_field(name="🎂 Birthday", value=user_data[column_names.index('birthday')], inline=True)
+            embed.add_field(name="\u200b", value="", inline=False)
+
+            if discord_member:
+                roles = [role.mention for role in discord_member.roles if role.name != "@everyone"]
+                embed.add_field(name=f"⚙️ Roles [{len(roles)}]", value=" ".join(roles) if roles else "No roles",
+                                inline=False)
+
+            # Additional information for staff and famed members
+            if any(role.id in [ROLE_ID_STAFF, ROLE_ID_FAMED_MEMBER] for role in interaction.user.roles):
+                if discord_member:
+                    permissions = []
+                    if discord_member.guild_permissions.administrator:
+                        permissions.append("Administrator")
+                    else:
+                        for perm in ['manage_guild', 'ban_members', 'kick_members']:
+                            if getattr(discord_member.guild_permissions, perm):
+                                permissions.append(perm.replace('_', ' ').title())
+                    embed.add_field(name="\u200b", value="", inline=False)
+                    embed.add_field(name="🔑 Key Permissions",
+                                    value=", ".join(permissions) if permissions else "No key permissions", inline=True)
+
+                acknowledgements = []
+                if interaction.guild.owner_id == discord_user.id:
+                    acknowledgements.append("Server Owner")
+                elif discord_member and discord_member.guild_permissions.administrator:
+                    acknowledgements.append("Server Admin")
+                if acknowledgements:
+                    embed.add_field(name="🏆 Acknowledgements", value=", ".join(acknowledgements), inline=True)
+
+                watchlist_status = "Yes" if user_data[5] != '-' else "No"
+                embed.add_field(name="\u200b", value="", inline=False)
+                embed.add_field(name="🚨 On watchlist", value=watchlist_status, inline=True)
+
+                c.execute("SELECT * FROM warnings WHERE discord_id = ?", (user_data[0],))
+                warnings = c.fetchall()
+                embed.add_field(name="⚠️ Warnings", value=str(len(warnings)), inline=True)
+
+                embed.set_footer(text=f"ID: {discord_user.id} • {datetime.now().strftime('%m/%d/%Y %I:%M %p')}")
+
+                if watchlist_status == "Yes":
+                    embed.add_field(name="\u200b", value="", inline=False)
+                    embed.add_field(name="Watchlist Reason", value=f"{user_data[5]}", inline=False)
+
+                view = discord.ui.View()
+                if warnings:
+                    view.add_item(WarningsButton(self, user_data[0], warnings))
+                await interaction.followup.send(embed=embed, view=view)
+            else:
+                await interaction.followup.send(embed=embed)
 
         except sqlite3.Error as e:
-            await interaction.followup.send(f"A database error occurred: {e}")
+            await interaction.followup.send(f"A database error occurred: {e}", ephemeral=True)
         except discord.HTTPException as e:
-            await interaction.followup.send(f"An error occurred while sending the message: {e}")
+            await interaction.followup.send(f"An error occurred while sending the message: {e}", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"An unexpected error occurred: {e}")
+            await interaction.followup.send(f"An unexpected error occurred: {e}", ephemeral=True)
         finally:
             if conn:
                 conn.close()
@@ -982,138 +1179,34 @@ class MemberCog(commands.Cog):
     @whois.error
     async def whois_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
-            await interaction.response.send_message("Sorry, you don't have the necessary permissions to use this command..",
-                                                    ephemeral=True)
+            await interaction.response.send_message(
+                "Sorry, you don't have the necessary permissions to use this command.", ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
 
-    @app_commands.command(name="update-gw2id", description="Update your Guild Wars 2 ID")
+    @app_commands.command(name="gw2id", description="Update or remove your Guild Wars 2 ID")
     @app_commands.checks.has_role(ROLE_ID_MEMBER)
-    async def update_gw2id(self, interaction: discord.Interaction):
-
-        # Display the modal to collect the GW2 ID
-        await interaction.response.send_modal(GW2IDUpdateModal(self))
-
-    async def process_update(self, interaction: discord.Interaction, new_gw2_id: str):
-        # Fetch the guild roster from the GW2 API
-        response = requests.get(f"https://api.guildwars2.com/v2/guild/{GUILD_ID}/members",
-                                headers={"Authorization": f"Bearer {API_KEY}"})
-        if response.status_code != 200:
-            await interaction.followup.send("Failed to fetch guild roster. Please try again later.")
-            return
-        guild_roster = response.json()
-
-        # Check if the provided GW2 ID matches any member in the guild roster
-        matching_member = next((m for m in guild_roster if m['name'].lower() == new_gw2_id.lower()), None)
-
-        if matching_member:
-            # Connect to the database
+    @app_commands.choices(action=[
+        app_commands.Choice(name="Update", value="update"),
+        app_commands.Choice(name="Remove", value="remove")
+    ])
+    async def gw2id(self, interaction: discord.Interaction, action: app_commands.Choice[str]):
+        if action.value == "update":
+            await interaction.response.send_modal(GW2IDUpdateModal(self.bot))
+        elif action.value == "remove":
             conn = sqlite3.connect(CURRENT_DB_FILENAME)
-            cursor = conn.cursor()
-
+            c = conn.cursor()
             try:
-                # Fetch current user data
-                cursor.execute("SELECT gw2_id, alt_gw2_id FROM users WHERE discord_id = ?", (str(interaction.user.id),))
-                current_data = cursor.fetchone()
-                current_main_id, current_alt_id = current_data if current_data else (None, None)
-
-                swapped = False
-                # Check if we're swapping main and alt
-                if new_gw2_id == current_alt_id:
-                    new_main_id, new_alt_id = current_alt_id, current_main_id
-                    swapped = True
-                else:
-                    new_main_id, new_alt_id = new_gw2_id, current_alt_id
-
-                # Check for conflicts with existing accounts
-                cursor.execute("SELECT discord_id FROM users WHERE gw2_id = ? OR alt_gw2_id = ?",
-                               (new_main_id, new_main_id))
-                existing_user = cursor.fetchone()
-                if existing_user and str(existing_user[0]) != str(interaction.user.id):
-                    await interaction.followup.send(
-                        f"This Guild Wars 2 ID ({new_main_id}) is already associated with another Discord account. Contact staff if you believe this is an error.",
-                        ephemeral=True)
-                    mentors_channel = self.bot.get_channel(CHANNEL_ID_MENTORS)
-                    if mentors_channel:
-                        await mentors_channel.send(
-                            f"🚨 __**Suspicious Activity**__ 🚨\n\n"
-                            f"User {interaction.user.mention} attempted to verify with GW2 ID:\n\n"
-                            f"*{new_main_id}*\n\n"
-                            f"This ID is already associated with <@{existing_user[0]}>.")
-                    return
-
-                # Update the user's GW2 ID in the database
-                cursor.execute("UPDATE users SET gw2_id = ?, alt_gw2_id = ?, guild_status = ? WHERE discord_id = ?",
-                               (new_main_id, new_alt_id, "Member", str(interaction.user.id)))
+                c.execute("UPDATE users SET gw2_id = '-', guild_status = '-' WHERE discord_id = ?", (str(interaction.user.id),))
                 conn.commit()
-
-                if swapped:
-                    await interaction.followup.send(
-                        f"Your main and alt Guild Wars 2 IDs have been swapped. Main ID is now {new_main_id}.",
-                        ephemeral=True)
-                else:
-                    await interaction.followup.send(f"Your Guild Wars 2 ID has been updated to {new_main_id}.",
-                                                    ephemeral=True)
-
-                # Notify mentors
-                mentors_channel = self.bot.get_channel(CHANNEL_ID_MENTORS)
-                if mentors_channel:
-                    if swapped:
-                        await mentors_channel.send(
-                            f"{interaction.user.mention} has swapped their main and alt GW2 IDs. Main ID is now {new_main_id}.")
-                    else:
-                        await mentors_channel.send(
-                            f"{interaction.user.mention} has updated their GW2 ID to {new_main_id}.")
-
+                await interaction.response.send_message("Your Guild Wars 2 ID has been removed.", ephemeral=True)
+            except sqlite3.Error as e:
+                await interaction.response.send_message(f"An error occurred: {e}", ephemeral=True)
             finally:
                 conn.close()
-        else:
-            # Explain possible reasons for not finding a match
-            await interaction.followup.send(
-                f"The GW2 ID {new_gw2_id} was not found in the guild roster. This might be because:\n"
-                f"- There is a typo in the ID provided\n"
-                f"- You are not currently a member of the guild\n"
-                f"- The API key has not updated yet. Please wait about 10 minutes and try verifying again.",
-                ephemeral=True)
 
-            # Ask if the user needs an invitation
-            view = discord.ui.View()
-            view.add_item(discord.ui.Button(label="Yes", style=discord.ButtonStyle.green, custom_id="yes"))
-            view.add_item(discord.ui.Button(label="No", style=discord.ButtonStyle.red, custom_id="no"))
-
-            await interaction.followup.send("Do you need an invitation to the guild?", view=view, ephemeral=True)
-
-            try:
-                interaction_response = await self.bot.wait_for(
-                    "interaction",
-                    check=lambda i: i.user.id == interaction.user.id and i.data["custom_id"] in ["yes", "no"],
-                    timeout=180.0
-                )
-
-                if interaction_response.data["custom_id"] == "yes":
-                    await interaction_response.response.send_message(
-                        "[DPS] staff has been notified to invite you back to the guild.\n\n"
-                        "Please run this command again once you've joined the guild.", ephemeral=True)
-
-                    # Notify mentors
-                    mentors_channel = self.bot.get_channel(CHANNEL_ID_MENTORS)
-                    if mentors_channel:
-                        view = discord.ui.View().add_item(InvitationButton(new_gw2_id))
-                        await mentors_channel.send(
-                            f"🚨 __**Attention Needed**__ 🚨\n\n"
-                            f"{interaction.user.mention} needs to be invited to the guild with GW2 ID: {new_gw2_id}\n"
-                            f"Please invite them back to the guild.", view=view)
-                else:
-                    await interaction_response.response.send_message(
-                        "Alright, the process has been interrupted. No changes have been made to your GW2 ID.",
-                        ephemeral=True)
-
-            except asyncio.TimeoutError:
-                await interaction.followup.send("You didn't respond in time. No changes have been made to your GW2 ID.",
-                                                ephemeral=True)
-
-    @update_gw2id.error
-    async def update_gw2id_error(self, interaction: discord.Interaction, error):
+    @gw2id.error
+    async def gw2id_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message("You must be a member to update your GW2 ID.", ephemeral=True)
         else:
@@ -1126,68 +1219,27 @@ class StaffCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @staticmethod
-    async def display_warnings(interaction: discord.Interaction, user_id: str, warnings):
-        """Display warnings for a user."""
-        user = await interaction.client.fetch_user(int(user_id))
-        embed = discord.Embed(title="__**Warnings**__", color=discord.Color.yellow())
-
-        # Set author (this will display the avatar, nickname, and mention)
-        embed.set_author(name=f"{user.display_name}", icon_url=user.display_avatar.url)
-        embed.description = f"{user.mention}"
-
-        def format_date(date_string):
-            try:
-                date_obj = datetime.fromisoformat(date_string)
-                return date_obj.strftime("%B %d %Y at %I:%M %p")  # e.g., "July 14 2024 at 11:47 PM"
-            except ValueError:
-                return "Unknown Date"
-
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        thumbnail_path = os.path.join(script_dir, "Warnings.png")
-
-        if os.path.exists(thumbnail_path):
-            file = discord.File(thumbnail_path, filename="Warnings.png")
-            embed.set_thumbnail(url="attachment://Warnings.png")
-        else:
-            file = None
-            print(f"Thumbnail file not found at: {thumbnail_path}")
-
-        def get_ordinal_suffix(n):
-            if 11 <= n % 100 <= 13:
-                return 'th'
-            else:
-                return {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
-
-        for i, warning in enumerate(sorted(warnings, key=lambda x: x[3]), 1):
-            embed.add_field(
-                name=f"{i}{get_ordinal_suffix(i)} Warning",
-                value=f"__Reason:__ {warning[2]}\n__Date:__ {format_date(warning[3])}",
-                inline=False
-            )
-
-        try:
-            if interaction.response.is_done():
-                await interaction.followup.send(file=file, embed=embed, ephemeral=True)
-            else:
-                await interaction.response.send_message(file=file, embed=embed, ephemeral=True)
-        except discord.errors.NotFound:
-            # If the interaction has expired, send a new message in the channel
-            await interaction.channel.send(f"{interaction.user.mention}, here are the warnings:", file=file,
-                                           embed=embed)
-        except Exception as e:
-            print(f"Error displaying warnings: {e}")
-
-    @app_commands.command(name="admin-gw2id", description="Admin command to verify or update a user's Guild Wars 2 ID")
-    @app_commands.describe(action="Choose 'verify' or 'update'", user="The user to verify or update (@mention)",
-                           gw2_id="The user's GW2 ID (for verify action only)")
+    @app_commands.command(name="admin-gw2id",
+                          description="Admin command to verify, update, or remove a user's Guild Wars 2 ID")
+    @app_commands.describe(
+        action="Choose 'verify', 'update', or 'remove'",
+        user="The user to verify, update, or remove (@mention)",
+        gw2_id="The user's GW2 ID (for verify action only)",
+        id_type="The type of ID to remove (for remove action only)"
+    )
     @app_commands.choices(action=[
         app_commands.Choice(name="verify", value="verify"),
-        app_commands.Choice(name="update", value="update")
+        app_commands.Choice(name="update", value="update"),
+        app_commands.Choice(name="remove", value="remove")
+    ])
+    @app_commands.choices(id_type=[
+        app_commands.Choice(name="Main ID", value="main"),
+        app_commands.Choice(name="Alt ID", value="alt")
     ])
     @app_commands.checks.has_any_role(ROLE_ID_STAFF)
     async def admin_gw2id(self, interaction: discord.Interaction, action: str, user: discord.Member,
-                          gw2_id: str = None):
+                          gw2_id: str = None, id_type: str = None):
+
         if action == "verify":
             await interaction.response.defer(ephemeral=True)
 
@@ -1199,7 +1251,35 @@ class StaffCog(commands.Cog):
                 await interaction.followup.send("ConfirmationCog not found. Unable to process verification.")
 
         elif action == "update":
+            # Trigger the update modal for the selected user
             await interaction.response.send_modal(AdminGW2IDUpdateModal(interaction, user))
+
+        elif action == "remove":
+            if id_type not in ["main", "alt"]:
+                await interaction.response.send_message("Please specify if you want to remove 'main' or 'alt' ID.",
+                                                        ephemeral=True)
+                return
+
+            conn = sqlite3.connect(CURRENT_DB_FILENAME)
+            c = conn.cursor()
+
+            try:
+                # Remove based on id_type (main or alt)
+                if id_type == "main":
+                    c.execute("UPDATE users SET gw2_id = '-', guild_status = '-' WHERE discord_id = ?", (str(user.id),))
+                    message = "Main Guild Wars 2 ID has been removed."
+                elif id_type == "alt":
+                    c.execute("UPDATE users SET alt_gw2_id = '-', alt_guild_status = '-' WHERE discord_id = ?",
+                              (str(user.id),))
+                    message = "Alt Guild Wars 2 ID has been removed."
+
+                conn.commit()
+
+                await interaction.response.send_message(message, ephemeral=True)
+            except sqlite3.Error as e:
+                await interaction.response.send_message(f"An error occurred while removing the ID: {e}", ephemeral=True)
+            finally:
+                conn.close()
 
     @admin_gw2id.error
     async def admin_gw2id_error(self, interaction: discord.Interaction, error):
@@ -1344,7 +1424,7 @@ class StaffCog(commands.Cog):
                     embeds.append(embed)
 
                 script_dir = os.path.dirname(os.path.abspath(__file__))
-                thumbnail_path = os.path.join(script_dir, "Banlist.png")
+                thumbnail_path = os.path.join(script_dir, "pictures", "Banlist.png")
 
                 if os.path.exists(thumbnail_path):
                     file = discord.File(thumbnail_path, filename="Banlist.png")
@@ -1384,195 +1464,6 @@ class StaffCog(commands.Cog):
                 await interaction.response.send_message(
                     f"Missing required argument: {error.param.name}",
                     ephemeral=True)
-        else:
-            await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
-
-    @app_commands.command(name="get-info", description="Get information about a user")
-    @app_commands.describe(identifier="The user's Discord username/mention or GW2 ID")
-    @app_commands.checks.has_any_role(ROLE_ID_STAFF, ROLE_ID_FAMED_MEMBER)
-    async def get_info(self, interaction: discord.Interaction, identifier: str):
-        await interaction.response.defer(ephemeral=True)
-
-        conn = None
-        try:
-            conn = sqlite3.connect(CURRENT_DB_FILENAME)
-            c = conn.cursor()
-
-            # Try to find the user by Discord ID/mention
-            if identifier.startswith('<@') and identifier.endswith('>'):
-                discord_id = identifier[2:-1]
-                if discord_id.startswith('!'):
-                    discord_id = discord_id[1:]
-            else:
-                discord_id = identifier
-
-            # Try to find the user by Discord ID first
-            c.execute("SELECT * FROM users WHERE discord_id = ?", (discord_id,))
-            user_data = c.fetchone()
-
-            # If not found by Discord ID, try to find by GW2 ID
-            if not user_data:
-                c.execute("SELECT * FROM users WHERE gw2_id = ?", (identifier,))
-                user_data = c.fetchone()
-
-            # If still not found, try to find by alt GW2 ID
-            if not user_data:
-                c.execute("SELECT * FROM users WHERE alt_gw2_id = ?", (identifier,))
-                user_data = c.fetchone()
-
-            # Handle the case if user_data is found or not
-            if not user_data:
-                await interaction.followup.send("User not found in the database.", ephemeral=True)
-                return
-
-            if user_data:
-                # Get column names
-                column_names = [description[0] for description in c.description]
-
-                # Fetch Discord user and member objects
-                discord_user = await self.bot.fetch_user(int(user_data[column_names.index('discord_id')]))
-                discord_member = interaction.guild.get_member(discord_user.id)
-
-                # Get the user's color
-                user_color = discord_member.color if discord_member else discord.Color.blue()
-
-                # Create embed
-                embed = discord.Embed(color=user_color)
-
-                # Set author (this will display the avatar, nickname, and mention)
-                embed.set_author(name=f"{discord_member.display_name if discord_member else discord_user.name}",
-                                 icon_url=discord_user.display_avatar.url)
-
-                # Set thumbnail
-                embed.set_thumbnail(url=discord_user.display_avatar.url)
-
-                # Add Discord mention
-                embed.description = f"{discord_user.mention}"
-
-                # Add GW2 ID and Guild Status (Alt-account included)
-                gw2_id = user_data[column_names.index('gw2_id')]
-                guild_status = user_data[column_names.index('guild_status')]
-                alt_gw2_id = user_data[column_names.index('alt_gw2_id')]
-                alt_guild_status = user_data[column_names.index('alt_guild_status')]
-                embed.add_field(name="🔑 Guild Wars 2 ID", value=gw2_id, inline=True)
-                embed.add_field(name="🏅 Guild Status", value=guild_status, inline=True)
-                embed.add_field(name="\u200b", value="", inline=False)
-                embed.add_field(name="🔑 Guild Wars 2 ID (alt)", value=alt_gw2_id, inline=True)
-                embed.add_field(name="🏅 Guild Status (alt)", value=alt_guild_status, inline=True)
-                embed.add_field(name="\u200b", value="", inline=False)
-
-                # Fetch the guild roster from the GW2 API
-                response = requests.get(f"https://api.guildwars2.com/v2/guild/{GUILD_ID}/members",
-                                        headers={"Authorization": f"Bearer {API_KEY}"})
-                if response.status_code != 200:
-                    await interaction.followup.send("Failed to fetch the guild roster. Please try again later.",
-                                                    ephemeral=True)
-                    return
-                guild_roster = response.json()
-
-                # Search for the user in the guild roster using the GW2 ID
-                gw2_join_date = None
-                for member in guild_roster:
-                    if member["name"].lower() == gw2_id.lower():
-                        gw2_join_date = member.get('joined')
-                        break
-
-                # If not found, set the join date to "-"
-                if not gw2_join_date:
-                    joined_gw2_date = "-"
-                else:
-                    # Convert the GW2 join date to a human-readable format
-                    joined_gw2_date = datetime.strptime(gw2_join_date, "%Y-%m-%dT%H:%M:%S.%fZ").strftime("%b %d, %Y")
-
-                # Add GW2 join date to the embed
-                embed.add_field(name="📅 Guild joined", value=f"{joined_gw2_date}", inline=True)
-
-                # Add Discord registration date
-                registered_date = discord_user.created_at.strftime("%b %d, %Y")
-                embed.add_field(name="🕓 Discord joined", value=f"{registered_date}", inline=True)
-                embed.add_field(name="\u200b", value="", inline=False)
-
-                # Add Birthday date
-                embed.add_field(name="🎂 Birthday", value=user_data[column_names.index('birthday')], inline=True)
-                embed.add_field(name="\u200b", value="", inline=False)
-
-                # Add Roles
-                if discord_member:
-                    roles = [role.mention for role in discord_member.roles if role.name != "@everyone"]
-                    embed.add_field(name=f"🔖 Roles [{len(roles)}]", value=" ".join(roles) if roles else "No roles",
-                                    inline=False)
-
-                # Add Key Permissions
-                if discord_member:
-                    permissions = []
-                    if discord_member.guild_permissions.administrator:
-                        permissions.append("Administrator")
-                    else:
-                        if discord_member.guild_permissions.manage_guild:
-                            permissions.append("Manage Server")
-                        if discord_member.guild_permissions.ban_members:
-                            permissions.append("Ban Members")
-                        if discord_member.guild_permissions.kick_members:
-                            permissions.append("Kick Members")
-                    embed.add_field(name="\u200b", value="", inline=False)
-                    embed.add_field(name="🔑 Key Permissions",
-                                    value=", ".join(permissions) if permissions else "No key permissions",
-                                    inline=True)
-
-                # Add Acknowledgements
-                acknowledgements = []
-                if interaction.guild.owner_id == discord_user.id:
-                    acknowledgements.append("Server Owner")
-                elif discord_member and discord_member.guild_permissions.administrator:
-                    acknowledgements.append("Server Admin")
-                if acknowledgements:
-                    embed.add_field(name="🏆 Acknowledgements", value=", ".join(acknowledgements), inline=True)
-
-                # Watchlist status
-                watchlist_status = "Yes" if user_data[5] != '-' else "No"
-                embed.add_field(name="\u200b", value="", inline=False)
-                embed.add_field(name="🚨 On watchlist", value=watchlist_status, inline=True)
-
-                # Fetch warnings
-                c.execute("SELECT * FROM warnings WHERE discord_id = ?", (user_data[0],))
-                warnings = c.fetchall()
-                warnings_count = len(warnings)
-                embed.add_field(name="⚠️ Warnings", value=str(warnings_count), inline=True)
-
-                # Set footer with user ID
-                embed.set_footer(text=f"ID: {discord_user.id} • {datetime.now().strftime('%m/%d/%Y %I:%M %p')}")
-
-                # If the user is on the watchlist, add the reason
-                if watchlist_status == "Yes":
-                    embed.add_field(name="\u200b", value="", inline=False)
-                    embed.add_field(name="Watchlist Reason", value=f"{user_data[5]}", inline=False)
-
-                # Send the embed
-                if warnings:
-                    view = discord.ui.View()
-                    view.add_item(WarningsButton(self, user_data[0], warnings))
-                    await interaction.followup.send(embed=embed, view=view)
-                else:
-                    await interaction.followup.send(embed=embed)
-            else:
-                await interaction.followup.send("User not found in the database.", ephemeral=True)
-
-        except sqlite3.Error as e:
-            await interaction.followup.send(f"A database error occurred: {e}", ephemeral=True)
-        except discord.HTTPException as e:
-            await interaction.followup.send(f"An error occurred while sending the message: {e}", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"An unexpected error occurred: {e}", ephemeral=True)
-        finally:
-            if conn:
-                conn.close()
-
-    @get_info.error
-    async def get_info_error(self, interaction: discord.Interaction, error):
-        if isinstance(error, app_commands.errors.MissingRole):
-            await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command..",
-                ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
 
@@ -1625,8 +1516,8 @@ class StaffCog(commands.Cog):
 
                 # Remove the user from the watchlist by setting watchlist_reason to '-'
                 c.execute('''
-                    UPDATE users
-                    SET watchlist_reason = '-'
+                    UPDATE users 
+                    SET watchlist_reason = '-' 
                     WHERE discord_id = ?
                 ''', (user_data[0],))
 
@@ -1785,10 +1676,10 @@ class StaffCog(commands.Cog):
                         return
 
                     # Display warnings using the new method (which should display oldest to newest)
-                    await self.display_warnings(interaction, discord_id, warnings)
+                    await display_warnings(interaction, discord_id, warnings)
 
                     # Ask which warning to remove
-                    await interaction.followup.send("Enter the number of the warning you want to remove:",ephemeral=True)
+                    await interaction.followup.send("Enter the number of the warning you want to remove:", ephemeral=True)
 
                     def check(m):
                         return m.author == interaction.user and m.channel == interaction.channel and m.content.isdigit()
@@ -1798,7 +1689,7 @@ class StaffCog(commands.Cog):
 
                     except asyncio.TimeoutError:
 
-                        await interaction.followup.send("You didn't respond in time. Command cancelled.",ephemeral=True)
+                        await interaction.followup.send("You didn't respond in time. Command cancelled.", ephemeral=True)
                         return
 
                     warning_number = int(msg.content)
@@ -1811,7 +1702,7 @@ class StaffCog(commands.Cog):
                     # Remove the selected warning
                     warning_to_remove = warnings[warning_number - 1]
 
-                    c.execute("DELETE FROM warnings WHERE discord_id = ? AND date = ?",(discord_id, warning_to_remove[3]))
+                    c.execute("DELETE FROM warnings WHERE discord_id = ? AND date = ?", (discord_id, warning_to_remove[3]))
 
                     # Update the warnings count in the users table
                     c.execute("UPDATE users SET warnings = warnings - 1 WHERE discord_id = ?", (discord_id,))
@@ -1839,7 +1730,7 @@ class StaffCog(commands.Cog):
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
 
     @app_commands.command(name="get-applications", description="View staff member applications")
-    @app_commands.checks.has_any_role(ROLE_ID_STAFF, ROLE_ID_FAMED_MEMBER)
+    @app_commands.checks.has_any_role(ROLE_ID_STAFF)
     async def get_applications(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 
@@ -1867,7 +1758,7 @@ class StaffCog(commands.Cog):
 
             # Set thumbnail
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            thumbnail_path = os.path.join(script_dir, "Application.png")
+            thumbnail_path = os.path.join(script_dir, "pictures", "Application.png")
 
             if os.path.exists(thumbnail_path):
                 file = discord.File(thumbnail_path, filename="Application.png")
