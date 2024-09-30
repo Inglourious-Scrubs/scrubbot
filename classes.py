@@ -15,7 +15,9 @@ import requests
 from config import (ROLE_ID_CONFIRMATION, ROLE_ID_GUEST, ROLE_ID_MEMBER, ROLE_ID_STAFF, ROLE_ID_BIRTHDAY,
                     ROLE_ID_FAMED_MEMBER, GUILD_ID, API_KEY, CHANNEL_ID_MENTORS, CHANNEL_ID_RULES,
                     CURRENT_DB_FILENAME)
-import messages.warnings as msg_warnings
+# Message imports
+import messages.warnings as msg_warning
+import messages.general as msg_general
 
 
 # -------------- Classes for modals and buttons --------------
@@ -440,7 +442,7 @@ class ApplicationView(View):
         try:
             msg = await self.bot.wait_for('message', check=check, timeout=60.0)
         except asyncio.TimeoutError:
-            await interaction.followup.send("You didn't respond in time. Command cancelled.", ephemeral=True)
+            await interaction.followup.send(msg_general.no_response(), ephemeral=True)
             return
 
         app_id = int(msg.content)
@@ -505,7 +507,7 @@ class ApplicationView(View):
         try:
             msg = await self.bot.wait_for('message', check=check, timeout=30.0)
         except asyncio.TimeoutError:
-            await interaction.followup.send("You didn't respond in time. Command cancelled.", ephemeral=True)
+            await interaction.followup.send(msg_general.no_response(), ephemeral=True)
             return
 
         app_id = int(msg.content)
@@ -885,7 +887,7 @@ class ConfirmationCog(commands.Cog):
     async def verify_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command..",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
@@ -919,7 +921,7 @@ class ConfirmationCog(commands.Cog):
     async def guest_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command..",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
@@ -959,7 +961,7 @@ class ConfirmationCog(commands.Cog):
     async def guild_invite_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingAnyRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command.",
+                msg_general.invalid_permission(),
                 ephemeral=True
             )
         else:
@@ -1181,7 +1183,7 @@ class MemberCog(commands.Cog):
     async def whois_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command.", ephemeral=True)
+                msg_general.invalid_permission(), ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
 
@@ -1454,7 +1456,7 @@ class StaffCog(commands.Cog):
     async def ban_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command.",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         elif isinstance(error, app_commands.errors.MissingRequiredArgument):
             if error.param.name == 'reason':
@@ -1500,7 +1502,7 @@ class StaffCog(commands.Cog):
                 user_data = c.fetchone()
 
             if not user_data:
-                await interaction.response.send_message("User not found. Please check the identifier and try again.",
+                await interaction.response.send_message(msg_general.user_not_found(),
                                                         ephemeral=True)
                 return
 
@@ -1538,7 +1540,7 @@ class StaffCog(commands.Cog):
     async def watchlist_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command.",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
@@ -1551,7 +1553,7 @@ class StaffCog(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         if action == "add" and not reason:
-            await interaction.followup.send("A reason is required when adding a warning.", ephemeral=True)
+            await interaction.followup.send(msg_warning.reason_required(), ephemeral=True)
             return
 
         try:
@@ -1575,7 +1577,7 @@ class StaffCog(commands.Cog):
 
                 if not user_data:
                     await interaction.response.send_message(
-                        "User not found. Please check the identifier and try again.",
+                        msg_general.user_not_found(),
                         ephemeral=True)
                     return
 
@@ -1618,13 +1620,13 @@ class StaffCog(commands.Cog):
                     try:
                         user = await interaction.client.fetch_user(int(discord_id))
                         if warning_count == 1:
-                            await user.send(msg_warnings.first_warning(user.mention, reason, CHANNEL_ID_RULES))
+                            await user.send(msg_warning.first_warning(user.mention, reason, CHANNEL_ID_RULES))
                         elif warning_count == 2:
-                            await user.send(msg_warnings.second_warning(user.mention, reason, CHANNEL_ID_RULES))
+                            await user.send(msg_warning.second_warning(user.mention, reason, CHANNEL_ID_RULES))
                         else:
-                            await user.send(msg_warnings.third_warning(user.mention, reason, CHANNEL_ID_RULES))
+                            await user.send(msg_warning.third_warning(user.mention, reason, CHANNEL_ID_RULES))
                     except discord.HTTPException:
-                        await interaction.followup.send(msg_warnings.dm_user_error())
+                        await interaction.followup.send(msg_warning.dm_user_error())
 
                     # Send a message to the Mentor's channel
                     mentor_channel = interaction.guild.get_channel(CHANNEL_ID_MENTORS)
@@ -1633,11 +1635,11 @@ class StaffCog(commands.Cog):
                         view.add_item(WarningsButton(self, discord_id, warnings))  # Now warnings is initialized
 
                         await mentor_channel.send(
-                            msg_warnings.user_received_warning(discord_id, warning_count),
+                            msg_warning.user_received_warning(discord_id, warning_count),
                             view=view
                         )
                     else:
-                        await interaction.followup.send("Couldn't send notification to Mentor's channel.")
+                        await interaction.followup.send(msg_warning.notify_mentor_channel())
 
                 elif action == "remove":
                     # Fetch warnings in ascending order (oldest first)
@@ -1645,14 +1647,14 @@ class StaffCog(commands.Cog):
                     warnings = c.fetchall()
 
                     if not warnings:
-                        await interaction.followup.send("This user has no warnings to remove.", ephemeral=True)
+                        await interaction.followup.send(msg_warning.no_warnings(), ephemeral=True)
                         return
 
                     # Display warnings using the new method (which should display oldest to newest)
                     await display_warnings(interaction, discord_id, warnings)
 
                     # Ask which warning to remove
-                    await interaction.followup.send("Enter the number of the warning you want to remove:", ephemeral=True)
+                    await interaction.followup.send(msg_warning.warning_remove_number(), ephemeral=True)
 
                     def check(m):
                         return m.author == interaction.user and m.channel == interaction.channel and m.content.isdigit()
@@ -1662,14 +1664,14 @@ class StaffCog(commands.Cog):
 
                     except asyncio.TimeoutError:
 
-                        await interaction.followup.send("You didn't respond in time. Command cancelled.", ephemeral=True)
+                        await interaction.followup.send(msg_general.no_response(), ephemeral=True)
                         return
 
                     warning_number = int(msg.content)
                     await msg.delete()  # Delete the user's input message
 
                     if warning_number < 1 or warning_number > len(warnings):
-                        await interaction.followup.send("Invalid warning number. Command cancelled.", ephemeral=True)
+                        await interaction.followup.send(msg_warning.invalid_warning_number(), ephemeral=True)
                         return
 
                     # Remove the selected warning
@@ -1680,7 +1682,7 @@ class StaffCog(commands.Cog):
                     # Update the warnings count in the users table
                     c.execute("UPDATE users SET warnings = warnings - 1 WHERE discord_id = ?", (discord_id,))
                     conn.commit()
-                    await interaction.followup.send(f"Warning {warning_number} has been removed.", ephemeral=True)
+                    await interaction.followup.send(msg_warning.warning_removed(warning_number), ephemeral=True)
 
                     # Display updated warnings
                     c.execute("SELECT * FROM warnings WHERE discord_id = ? ORDER BY date ASC", (discord_id,))
@@ -1697,7 +1699,7 @@ class StaffCog(commands.Cog):
     async def warning_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command.",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
@@ -1755,7 +1757,7 @@ class StaffCog(commands.Cog):
     async def get_applications_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command..",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
@@ -1851,7 +1853,7 @@ class StaffCog(commands.Cog):
     async def crosscheck_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command..",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)

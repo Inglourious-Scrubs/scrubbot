@@ -1,4 +1,4 @@
-# Messages
+# Warning messages
 
 # First warning message
 def first_warning(user, reason, channel_id_rules):
@@ -45,10 +45,24 @@ def third_warning(user, reason, channel_id_rules):
 
 # Warning added, unable to DM user
 def dm_user_error():
-    message = "Warning added, but unable to send a DM to the user."
-    return message
+    return "Warning added, but unable to send a DM to the user."
 
 # User received a warning
 def user_received_warning(discord_id, warning_count):
-    message = f"User <@{discord_id}> has received a warning. Total warnings: {warning_count}"
-    return message
+    return f"User <@{discord_id}> has received a warning. Total warnings: {warning_count}"
+
+# Notify mentor channel
+def notify_mentor_channel():
+    return "Couldn't send notification to Mentor's channel."
+
+# No warnings to remove
+def no_warnings():
+    return "This user has no warnings to remove."
+
+# Enter number of warning to remove
+def warning_remove_number():
+    return "Enter the number of the warning you want to remove:"
+
+# Invalid warning number
+def invalid_warning_number():
+    return "Invalid warning number. Command cancelled."
