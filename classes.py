@@ -15,6 +15,7 @@ import requests
 from config import (ROLE_ID_CONFIRMATION, ROLE_ID_GUEST, ROLE_ID_MEMBER, ROLE_ID_STAFF, ROLE_ID_BIRTHDAY,
                     ROLE_ID_FAMED_MEMBER, GUILD_ID, API_KEY, CHANNEL_ID_MENTORS, CHANNEL_ID_RULES,
                     CURRENT_DB_FILENAME)
+import messages.msg_warnings as msg_warnings
 
 
 # -------------- Classes for modals and buttons --------------
@@ -318,8 +319,8 @@ class ApplicationModalPart2(discord.ui.Modal):
             conn = sqlite3.connect(CURRENT_DB_FILENAME)
             c = conn.cursor()
             c.execute('''
-                INSERT INTO mentor_applications 
-                (discord_id, gw2_id, joined_how, timezone, has_commander_tag, 
+                INSERT INTO mentor_applications
+                (discord_id, gw2_id, joined_how, timezone, has_commander_tag,
                 content_preference, has_led_event, event_interest, changes_suggested)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
@@ -387,8 +388,8 @@ class AddToWatchlistModal(ui.Modal, title='Add Player to Watchlist'):
             c = conn.cursor()
 
             c.execute('''
-                UPDATE users 
-                SET watchlist_reason = ? 
+                UPDATE users
+                SET watchlist_reason = ?
                 WHERE discord_id = ?
             ''', (self.reason.value, self.discord_id))
 
@@ -1516,8 +1517,8 @@ class StaffCog(commands.Cog):
 
                 # Remove the user from the watchlist by setting watchlist_reason to '-'
                 c.execute('''
-                    UPDATE users 
-                    SET watchlist_reason = '-' 
+                    UPDATE users
+                    SET watchlist_reason = '-'
                     WHERE discord_id = ?
                 ''', (user_data[0],))
 
@@ -1617,41 +1618,13 @@ class StaffCog(commands.Cog):
                     try:
                         user = await interaction.client.fetch_user(int(discord_id))
                         if warning_count == 1:
-                            await user.send(
-                                f"Dear {user.mention},\n\n"
-                                f"This is a notification regarding a warning issued by the [DPS] staff:\n\n"
-                                f"Reason: *{reason}*\n\n"
-                                f"We'd like to remind you of the importance of following our server rules and honoring your commitments to scheduled events. This helps maintain a positive environment for all members.\n\n"
-                                f"Please review the server rules in <#{CHANNEL_ID_RULES}> and ensure you can attend events you've signed up for. If you're unable to participate, kindly inform us in advance.\n\n"
-                                f"Thank you for your cooperation and understanding.\n\n"
-                                f"Best regards,\n"
-                                f"[DPS] Team"
-                            )
+                            await user.send(msg_warnings.first_warning(user.mention, reason, CHANNEL_ID_RULES))
                         elif warning_count == 2:
-                            await user.send(
-                                f"Dear {user.mention},\n\n"
-                                f"This is to inform you of a second warning issued by the [DPS] staff:\n\n"
-                                f"Reason: *{reason}*\n\n"
-                                f"We want to emphasize the importance of adhering to our server rules and respecting the time and effort put into organizing events. Your cooperation is crucial for a smooth and enjoyable experience for everyone involved.\n\n"
-                                f"Please take immediate action to address this issue. Review the server rules in <#{CHANNEL_ID_RULES}> and ensure you honour your commitments to events or provide timely notifications if you cannot attend.\n\n"
-                                f"We appreciate your prompt attention to this matter.\n\n"
-                                f"Best regards,\n"
-                                f"[DPS] Team"
-                            )
+                            await user.send(msg_warnings.second_warning(user.mention, reason, CHANNEL_ID_RULES))
                         else:
-                            await user.send(
-                                f"Dear {user.mention},\n\n"
-                                f"This is a final warning notification from the [DPS] staff:\n\n"
-                                f"Reason: *{reason}*\n\n"
-                                f"We must stress the extreme severity of this situation. Repeated violations of server rules or failure to honor event commitments have significantly impacted our community and the efforts of our event organizers.\n\n"
-                                f"This is your final opportunity to address these issues. Any further infractions will result in your immediate removal from both the guild and the Discord server. There will be no further warnings.\n\n"
-                                f"We strongly advise you to review and strictly adhere to the server rules in <#{CHANNEL_ID_RULES}>, and to fully commit to events you sign up for or provide ample notice if you cannot attend.\n\n"
-                                f"Your immediate and continued compliance is required to remain a member of our community.\n\n"
-                                f"Regards,\n"
-                                f"[DPS] Team"
-                            )
+                            await user.send(msg_warnings.third_warning(user.mention, reason, CHANNEL_ID_RULES))
                     except discord.HTTPException:
-                        await interaction.followup.send("Warning added, but unable to send a DM to the user.")
+                        await interaction.followup.send(msg_warnings.dm_user_error())
 
                     # Send a message to the Mentor's channel
                     mentor_channel = interaction.guild.get_channel(CHANNEL_ID_MENTORS)
@@ -1660,7 +1633,7 @@ class StaffCog(commands.Cog):
                         view.add_item(WarningsButton(self, discord_id, warnings))  # Now warnings is initialized
 
                         await mentor_channel.send(
-                            f"User <@{discord_id}> has received a warning. Total warnings: {warning_count}",
+                            msg_warnings.user_received_warning(discord_id, warning_count),
                             view=view
                         )
                     else:
