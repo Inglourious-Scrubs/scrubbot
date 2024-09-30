@@ -15,7 +15,7 @@ import requests
 from config import (ROLE_ID_CONFIRMATION, ROLE_ID_GUEST, ROLE_ID_MEMBER, ROLE_ID_STAFF, ROLE_ID_BIRTHDAY,
                     ROLE_ID_FAMED_MEMBER, GUILD_ID, API_KEY, CHANNEL_ID_MENTORS, CHANNEL_ID_RULES,
                     CURRENT_DB_FILENAME)
-import messages.msg_warnings as msg_warnings
+import messages.warnings as msg_warnings
 
 
 # -------------- Classes for modals and buttons --------------
