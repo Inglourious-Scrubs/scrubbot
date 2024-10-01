@@ -18,6 +18,7 @@ from config import (ROLE_ID_CONFIRMATION, ROLE_ID_GUEST, ROLE_ID_MEMBER, ROLE_ID
 # Message imports
 import messages.warnings as msg_warning
 import messages.general as msg_general
+import messages.mentor_application as msg_mentor_app
 
 
 # -------------- Classes for modals and buttons --------------
@@ -1011,29 +1012,8 @@ class MemberCog(commands.Cog):
     @app_commands.checks.has_role(ROLE_ID_MEMBER)
     async def apply_mentor(self, interaction: discord.Interaction):
         embed = discord.Embed(
-            title="<:DPS:858334399950487562> [DPS] Staff Member Application <:DPS:858334399950487562>",
-            description="""
-                Our Guild aims to create a community where Guild Wars 2 players can connect and enjoy the game together. To maintain an active and lively community, we need dedicated staff members.
-
-                As a team, we follow some simple guidelines and tasks to ensure minimal effort while maximizing fun and engagement.
-
-                # ═══ GENERAL GUIDELINES ═══ #
-                <:warrow:1104681928969429013> Report any disrespectful behavior with a screenshot to the admins.
-                <:warrow:1104681928969429013> Use commander tag reactions in <#1104685866435223592> to show who leads or can backup events.
-                <:warrow:1104681928969429013> Inform the rest of the staff, if you’ll be absent for a long period or can’t lead an event.
-                <:warrow:1104681928969429013> Share ideas or propose new events and Discord features.
-
-                # ════ TASKS ════ #
-                <:warrow:1104681928969429013> Lead or backup scheduled events.
-                <:warrow:1104681928969429013> Support events with Shouts or by participating.
-                <:warrow:1104681928969429013> Help members with questions in-game or on Discord.
-                <:warrow:1104681928969429013> Provide feedback on new ideas for the Guild or Discord.
-
-                **Optional Tasks**
-                <:warrow:1104681928969429013> Organize spontaneous events (e.g., Raids, Strikes, Fractals, Dungeons, Bounties) through <#1205228444657524756> or Guild chat.
-
-                There is a 3-month trial period to see how things work. Please answer the following questions to help us get to know you better.
-            """,
+            title=msg_mentor_app.apply_title(),
+            description=msg_mentor_app.apply_description(),
             color=discord.Color.blue()
         )
 

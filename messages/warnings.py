@@ -66,3 +66,11 @@ def warning_remove_number():
 # Invalid warning number
 def invalid_warning_number():
     return "Invalid warning number. Command cancelled."
+
+# Warning removed
+def warning_removed(warning_number):
+    return f"Warning {warning_number} has been removed."
+
+# Reason required for warning
+def reason_required():
+    return "A reason is required when adding a warning"
