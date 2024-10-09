@@ -12,13 +12,14 @@ from discord.ui import Button, View
 import requests
 
 # Personal files
-from config import (ROLE_ID_CONFIRMATION, ROLE_ID_GUEST, ROLE_ID_MEMBER, ROLE_ID_STAFF, ROLE_ID_BIRTHDAY,
-                    ROLE_ID_FAMED_MEMBER, GUILD_ID, API_KEY, CHANNEL_ID_MENTORS, CHANNEL_ID_RULES,
+from config import (DISCORD_INVITE_URL, ROLE_ID_CONFIRMATION, ROLE_ID_GUEST, ROLE_ID_MEMBER, ROLE_ID_STAFF,
+                    ROLE_ID_BIRTHDAY, ROLE_ID_FAMED_MEMBER, GUILD_ID, API_KEY, CHANNEL_ID_MENTORS, CHANNEL_ID_RULES,
                     CURRENT_DB_FILENAME)
 # Message imports
 import messages.warnings as msg_warning
 import messages.general as msg_general
 import messages.mentor_application as msg_mentor_app
+import messages.cross_check as msg_cross_check
 
 
 # -------------- Classes for modals and buttons --------------
@@ -1793,21 +1794,7 @@ class StaffCog(commands.Cog):
                     )
 
                 # Add the message block
-                message_block = (
-                    "Subject:\n"
-                    "```\n"
-                    "[DPS] - Inactivity/Missing link\n"
-                    "```\n"
-                    "Mail:\n"
-                    "```\n"
-                    "Hey!\n\n"
-                    "We're cleaning up the roster and members inactive for 1 month+ or without a linked Discord ID will be removed. "
-                    "Don't worry, we won't remove you from the [DPS] Discord server! If you return, just drop a message in the general channel for a re-invite.\n\n"
-                    "If you're not on Discord anymore, here's the link to join again: https://discord.gg/VEt83EZN83\n\n"
-                    "Hope to see you back soon!\n\n"
-                    "Inglorious Scrubs [DPS] Team\n"
-                    "```"
-                )
+                message_block = msg_cross_check(DISCORD_INVITE_URL)
                 embed.add_field(name="Message Template", value=message_block, inline=False)
 
                 embed.set_footer(text=f"Page {len(embeds) + 1}/{-(-len(unlinked_members) // chunk_size)}")
