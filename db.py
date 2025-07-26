@@ -37,7 +37,7 @@ def init_db(version, bot):
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             discord_id TEXT PRIMARY KEY,
-            gw2_id TEXT NOT NULL COLLATE NOCASE DEFAULT 'Unknown',
+            gw2_id TEXT NOT NULL COLLATE NOCASE DEFAULT '-',
             guild_status TEXT NOT NULL DEFAULT '-',
             alt_gw2_id TEXT NOT NULL COLLATE NOCASE DEFAULT '-',
             alt_guild_status TEXT NOT NULL DEFAULT '-',
