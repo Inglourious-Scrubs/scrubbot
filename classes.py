@@ -318,8 +318,8 @@ class ApplicationModalPart2(discord.ui.Modal):
             conn = sqlite3.connect(CURRENT_DB_FILENAME)
             c = conn.cursor()
             c.execute('''
-                INSERT INTO mentor_applications 
-                (discord_id, gw2_id, joined_how, timezone, has_commander_tag, 
+                INSERT INTO mentor_applications
+                (discord_id, gw2_id, joined_how, timezone, has_commander_tag,
                 content_preference, has_led_event, event_interest, changes_suggested)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
@@ -387,8 +387,8 @@ class AddToWatchlistModal(ui.Modal, title='Add Player to Watchlist'):
             c = conn.cursor()
 
             c.execute('''
-                UPDATE users 
-                SET watchlist_reason = ? 
+                UPDATE users
+                SET watchlist_reason = ?
                 WHERE discord_id = ?
             ''', (self.reason.value, self.discord_id))
 
@@ -713,7 +713,7 @@ async def process_update(bot, interaction: discord.Interaction, new_gw2_id: str)
                 await interaction.followup.send(
                     f"This Guild Wars 2 ID ({new_main_id}) is already associated with another Discord account. Contact staff if you believe this is an error.",
                     ephemeral=True)
-                mentors_channel = self.bot.get_channel(CHANNEL_ID_MENTORS)
+                mentors_channel = bot.get_channel(CHANNEL_ID_MENTORS)
                 if mentors_channel:
                     await mentors_channel.send(
                         f"🚨 __**Suspicious Activity**__ 🚨\n\n"
@@ -849,9 +849,10 @@ class ConfirmationCog(commands.Cog):
             conn.commit()
             conn.close()
 
-            # Remove all roles from the user except the default role
-            roles_to_remove = [role for role in user_to_verify.roles if role != interaction.guild.default_role]
-            await user_to_verify.remove_roles(*roles_to_remove)
+            # Remove only the confirmation and guest roles
+            roles_to_remove = [role for role in user_to_verify.roles if role.id in (ROLE_ID_CONFIRMATION, ROLE_ID_GUEST)]
+            if roles_to_remove:
+                await user_to_verify.remove_roles(*roles_to_remove)
 
             # Add the member role
             member_role = discord.utils.get(interaction.guild.roles, id=ROLE_ID_MEMBER)
@@ -1516,8 +1517,8 @@ class StaffCog(commands.Cog):
 
                 # Remove the user from the watchlist by setting watchlist_reason to '-'
                 c.execute('''
-                    UPDATE users 
-                    SET watchlist_reason = '-' 
+                    UPDATE users
+                    SET watchlist_reason = '-'
                     WHERE discord_id = ?
                 ''', (user_data[0],))
 
