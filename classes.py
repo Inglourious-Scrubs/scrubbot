@@ -12,9 +12,14 @@ from discord.ui import Button, View
 import requests
 
 # Personal files
-from config import (ROLE_ID_CONFIRMATION, ROLE_ID_GUEST, ROLE_ID_MEMBER, ROLE_ID_STAFF, ROLE_ID_BIRTHDAY,
-                    ROLE_ID_FAMED_MEMBER, GUILD_ID, API_KEY, CHANNEL_ID_MENTORS, CHANNEL_ID_RULES,
+from config import (DISCORD_INVITE_URL, ROLE_ID_CONFIRMATION, ROLE_ID_GUEST, ROLE_ID_MEMBER, ROLE_ID_STAFF,
+                    ROLE_ID_BIRTHDAY, ROLE_ID_FAMED_MEMBER, GUILD_ID, API_KEY, CHANNEL_ID_MENTORS, CHANNEL_ID_RULES,
                     CURRENT_DB_FILENAME)
+# Message imports
+import messages.warnings as msg_warning
+import messages.general as msg_general
+import messages.mentor_application as msg_mentor_app
+import messages.cross_check as msg_cross_check
 
 
 # -------------- Classes for modals and buttons --------------
@@ -439,7 +444,7 @@ class ApplicationView(View):
         try:
             msg = await self.bot.wait_for('message', check=check, timeout=60.0)
         except asyncio.TimeoutError:
-            await interaction.followup.send("You didn't respond in time. Command cancelled.", ephemeral=True)
+            await interaction.followup.send(msg_general.no_response(), ephemeral=True)
             return
 
         app_id = int(msg.content)
@@ -504,7 +509,7 @@ class ApplicationView(View):
         try:
             msg = await self.bot.wait_for('message', check=check, timeout=30.0)
         except asyncio.TimeoutError:
-            await interaction.followup.send("You didn't respond in time. Command cancelled.", ephemeral=True)
+            await interaction.followup.send(msg_general.no_response(), ephemeral=True)
             return
 
         app_id = int(msg.content)
@@ -885,7 +890,7 @@ class ConfirmationCog(commands.Cog):
     async def verify_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command..",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
@@ -919,7 +924,7 @@ class ConfirmationCog(commands.Cog):
     async def guest_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command..",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
@@ -959,7 +964,7 @@ class ConfirmationCog(commands.Cog):
     async def guild_invite_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingAnyRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command.",
+                msg_general.invalid_permission(),
                 ephemeral=True
             )
         else:
@@ -1009,29 +1014,8 @@ class MemberCog(commands.Cog):
     @app_commands.checks.has_role(ROLE_ID_MEMBER)
     async def apply_mentor(self, interaction: discord.Interaction):
         embed = discord.Embed(
-            title="<:DPS:858334399950487562> [DPS] Staff Member Application <:DPS:858334399950487562>",
-            description="""
-                Our Guild aims to create a community where Guild Wars 2 players can connect and enjoy the game together. To maintain an active and lively community, we need dedicated staff members.
-
-                As a team, we follow some simple guidelines and tasks to ensure minimal effort while maximizing fun and engagement.
-
-                # ═══ GENERAL GUIDELINES ═══ #
-                <:warrow:1104681928969429013> Report any disrespectful behavior with a screenshot to the admins.
-                <:warrow:1104681928969429013> Use commander tag reactions in <#1104685866435223592> to show who leads or can backup events.
-                <:warrow:1104681928969429013> Inform the rest of the staff, if you’ll be absent for a long period or can’t lead an event.
-                <:warrow:1104681928969429013> Share ideas or propose new events and Discord features.
-
-                # ════ TASKS ════ #
-                <:warrow:1104681928969429013> Lead or backup scheduled events.
-                <:warrow:1104681928969429013> Support events with Shouts or by participating.
-                <:warrow:1104681928969429013> Help members with questions in-game or on Discord.
-                <:warrow:1104681928969429013> Provide feedback on new ideas for the Guild or Discord.
-
-                **Optional Tasks**
-                <:warrow:1104681928969429013> Organize spontaneous events (e.g., Raids, Strikes, Fractals, Dungeons, Bounties) through <#1205228444657524756> or Guild chat.
-
-                There is a 3-month trial period to see how things work. Please answer the following questions to help us get to know you better.
-            """,
+            title=msg_mentor_app.apply_title(),
+            description=msg_mentor_app.apply_description(),
             color=discord.Color.blue()
         )
 
@@ -1181,7 +1165,7 @@ class MemberCog(commands.Cog):
     async def whois_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command.", ephemeral=True)
+                msg_general.invalid_permission(), ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
 
@@ -1454,7 +1438,7 @@ class StaffCog(commands.Cog):
     async def ban_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command.",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         elif isinstance(error, app_commands.errors.MissingRequiredArgument):
             if error.param.name == 'reason':
@@ -1500,7 +1484,7 @@ class StaffCog(commands.Cog):
                 user_data = c.fetchone()
 
             if not user_data:
-                await interaction.response.send_message("User not found. Please check the identifier and try again.",
+                await interaction.response.send_message(msg_general.user_not_found(),
                                                         ephemeral=True)
                 return
 
@@ -1538,7 +1522,7 @@ class StaffCog(commands.Cog):
     async def watchlist_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command.",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
@@ -1551,7 +1535,7 @@ class StaffCog(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         if action == "add" and not reason:
-            await interaction.followup.send("A reason is required when adding a warning.", ephemeral=True)
+            await interaction.followup.send(msg_warning.reason_required(), ephemeral=True)
             return
 
         try:
@@ -1575,7 +1559,7 @@ class StaffCog(commands.Cog):
 
                 if not user_data:
                     await interaction.response.send_message(
-                        "User not found. Please check the identifier and try again.",
+                        msg_general.user_not_found(),
                         ephemeral=True)
                     return
 
@@ -1618,41 +1602,13 @@ class StaffCog(commands.Cog):
                     try:
                         user = await interaction.client.fetch_user(int(discord_id))
                         if warning_count == 1:
-                            await user.send(
-                                f"Dear {user.mention},\n\n"
-                                f"This is a notification regarding a warning issued by the [DPS] staff:\n\n"
-                                f"Reason: *{reason}*\n\n"
-                                f"We'd like to remind you of the importance of following our server rules and honoring your commitments to scheduled events. This helps maintain a positive environment for all members.\n\n"
-                                f"Please review the server rules in <#{CHANNEL_ID_RULES}> and ensure you can attend events you've signed up for. If you're unable to participate, kindly inform us in advance.\n\n"
-                                f"Thank you for your cooperation and understanding.\n\n"
-                                f"Best regards,\n"
-                                f"[DPS] Team"
-                            )
+                            await user.send(msg_warning.first_warning(user.mention, reason, CHANNEL_ID_RULES))
                         elif warning_count == 2:
-                            await user.send(
-                                f"Dear {user.mention},\n\n"
-                                f"This is to inform you of a second warning issued by the [DPS] staff:\n\n"
-                                f"Reason: *{reason}*\n\n"
-                                f"We want to emphasize the importance of adhering to our server rules and respecting the time and effort put into organizing events. Your cooperation is crucial for a smooth and enjoyable experience for everyone involved.\n\n"
-                                f"Please take immediate action to address this issue. Review the server rules in <#{CHANNEL_ID_RULES}> and ensure you honour your commitments to events or provide timely notifications if you cannot attend.\n\n"
-                                f"We appreciate your prompt attention to this matter.\n\n"
-                                f"Best regards,\n"
-                                f"[DPS] Team"
-                            )
+                            await user.send(msg_warning.second_warning(user.mention, reason, CHANNEL_ID_RULES))
                         else:
-                            await user.send(
-                                f"Dear {user.mention},\n\n"
-                                f"This is a final warning notification from the [DPS] staff:\n\n"
-                                f"Reason: *{reason}*\n\n"
-                                f"We must stress the extreme severity of this situation. Repeated violations of server rules or failure to honor event commitments have significantly impacted our community and the efforts of our event organizers.\n\n"
-                                f"This is your final opportunity to address these issues. Any further infractions will result in your immediate removal from both the guild and the Discord server. There will be no further warnings.\n\n"
-                                f"We strongly advise you to review and strictly adhere to the server rules in <#{CHANNEL_ID_RULES}>, and to fully commit to events you sign up for or provide ample notice if you cannot attend.\n\n"
-                                f"Your immediate and continued compliance is required to remain a member of our community.\n\n"
-                                f"Regards,\n"
-                                f"[DPS] Team"
-                            )
+                            await user.send(msg_warning.third_warning(user.mention, reason, CHANNEL_ID_RULES))
                     except discord.HTTPException:
-                        await interaction.followup.send("Warning added, but unable to send a DM to the user.")
+                        await interaction.followup.send(msg_warning.dm_user_error())
 
                     # Send a message to the Mentor's channel
                     mentor_channel = interaction.guild.get_channel(CHANNEL_ID_MENTORS)
@@ -1661,11 +1617,11 @@ class StaffCog(commands.Cog):
                         view.add_item(WarningsButton(self, discord_id, warnings))  # Now warnings is initialized
 
                         await mentor_channel.send(
-                            f"User <@{discord_id}> has received a warning. Total warnings: {warning_count}",
+                            msg_warning.user_received_warning(discord_id, warning_count),
                             view=view
                         )
                     else:
-                        await interaction.followup.send("Couldn't send notification to Mentor's channel.")
+                        await interaction.followup.send(msg_warning.notify_mentor_channel())
 
                 elif action == "remove":
                     # Fetch warnings in ascending order (oldest first)
@@ -1673,14 +1629,14 @@ class StaffCog(commands.Cog):
                     warnings = c.fetchall()
 
                     if not warnings:
-                        await interaction.followup.send("This user has no warnings to remove.", ephemeral=True)
+                        await interaction.followup.send(msg_warning.no_warnings(), ephemeral=True)
                         return
 
                     # Display warnings using the new method (which should display oldest to newest)
                     await display_warnings(interaction, discord_id, warnings)
 
                     # Ask which warning to remove
-                    await interaction.followup.send("Enter the number of the warning you want to remove:", ephemeral=True)
+                    await interaction.followup.send(msg_warning.warning_remove_number(), ephemeral=True)
 
                     def check(m):
                         return m.author == interaction.user and m.channel == interaction.channel and m.content.isdigit()
@@ -1690,14 +1646,14 @@ class StaffCog(commands.Cog):
 
                     except asyncio.TimeoutError:
 
-                        await interaction.followup.send("You didn't respond in time. Command cancelled.", ephemeral=True)
+                        await interaction.followup.send(msg_general.no_response(), ephemeral=True)
                         return
 
                     warning_number = int(msg.content)
                     await msg.delete()  # Delete the user's input message
 
                     if warning_number < 1 or warning_number > len(warnings):
-                        await interaction.followup.send("Invalid warning number. Command cancelled.", ephemeral=True)
+                        await interaction.followup.send(msg_warning.invalid_warning_number(), ephemeral=True)
                         return
 
                     # Remove the selected warning
@@ -1708,7 +1664,7 @@ class StaffCog(commands.Cog):
                     # Update the warnings count in the users table
                     c.execute("UPDATE users SET warnings = warnings - 1 WHERE discord_id = ?", (discord_id,))
                     conn.commit()
-                    await interaction.followup.send(f"Warning {warning_number} has been removed.", ephemeral=True)
+                    await interaction.followup.send(msg_warning.warning_removed(warning_number), ephemeral=True)
 
                     # Display updated warnings
                     c.execute("SELECT * FROM warnings WHERE discord_id = ? ORDER BY date ASC", (discord_id,))
@@ -1725,7 +1681,7 @@ class StaffCog(commands.Cog):
     async def warning_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command.",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
@@ -1783,7 +1739,7 @@ class StaffCog(commands.Cog):
     async def get_applications_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command..",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
@@ -1839,21 +1795,7 @@ class StaffCog(commands.Cog):
                     )
 
                 # Add the message block
-                message_block = (
-                    "Subject:\n"
-                    "```\n"
-                    "[DPS] - Inactivity/Missing link\n"
-                    "```\n"
-                    "Mail:\n"
-                    "```\n"
-                    "Hey!\n\n"
-                    "We're cleaning up the roster and members inactive for 1 month+ or without a linked Discord ID will be removed. "
-                    "Don't worry, we won't remove you from the [DPS] Discord server! If you return, just drop a message in the general channel for a re-invite.\n\n"
-                    "If you're not on Discord anymore, here's the link to join again: https://discord.gg/VEt83EZN83\n\n"
-                    "Hope to see you back soon!\n\n"
-                    "Inglorious Scrubs [DPS] Team\n"
-                    "```"
-                )
+                message_block = msg_cross_check(DISCORD_INVITE_URL)
                 embed.add_field(name="Message Template", value=message_block, inline=False)
 
                 embed.set_footer(text=f"Page {len(embeds) + 1}/{-(-len(unlinked_members) // chunk_size)}")
@@ -1879,7 +1821,7 @@ class StaffCog(commands.Cog):
     async def crosscheck_error(self, interaction: discord.Interaction, error):
         if isinstance(error, app_commands.errors.MissingRole):
             await interaction.response.send_message(
-                "Sorry, you don't have the necessary permissions to use this command..",
+                msg_general.invalid_permission(),
                 ephemeral=True)
         else:
             await interaction.response.send_message(f"An error occurred: {str(error)}", ephemeral=True)
